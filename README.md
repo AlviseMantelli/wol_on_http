@@ -1,2 +1,6 @@
-# wol_on_http
-A simple web server in python to expose Wake-On-Lan.
+## 🚀 Quick install
+
+Run this command on the destination PC:
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/tuo-user/wake-on-lan-server/main/install_wolserver.sh)"
