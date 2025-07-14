@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
+import subprocess
+import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from wakeonlan import send_magic_packet
 
-# Questi valori saranno sostituiti dallo script di installazione
-TARGET_MAC = '00:00:00:00:00:00'
+# Da modificare con i valori corretti
+TARGET_MAC = '00:11:22:33:44:55'
+TARGET_IP = '0.0.0.0'
 PORT = 8000
 
-# Semplice favicon SVG (puoi sostituire con la tua)
 FAVICON_SVG = b'''<?xml version="1.0" encoding="utf-8"?>
 <!-- Generator: Adobe Illustrator 19.1.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
 <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
@@ -57,137 +59,155 @@ FAVICON_SVG = b'''<?xml version="1.0" encoding="utf-8"?>
 </svg>
 '''
 
+# SVG icons for status, inline for cleaner look:
+SVG_CHECK = '''<svg style="vertical-align:middle" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#188038" viewBox="0 0 24 24"><path d="M20.285 6.707l-11.39 11.39-5.657-5.657 1.414-1.414 4.243 4.243 9.975-9.975z"/></svg>'''
+SVG_CROSS = '''<svg style="vertical-align:middle" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#d93025" viewBox="0 0 24 24"><path d="M18.364 5.636l-1.414-1.414L12 9.172 7.05 4.222 5.636 5.636 10.586 10.586 5.636 15.536l1.414 1.414L12 12l4.95 4.95 1.414-1.414-4.95-4.95z"/></svg>'''
+
 class RequestHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         if self.path == '/wol':
             try:
                 send_magic_packet(TARGET_MAC)
                 self.send_response(200)
-                self.send_header('Content-type', 'text/html; charset=utf-8')
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.end_headers()
-                # HTML responsive e semplice con Trebuchet MS
                 html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Wake-on-LAN Sent</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
   body {{
-    font-family: 'Roboto', 'Trebuchet MS', sans-serif;
-    background: #f5f5f5;
-    color: #212121;
     margin: 0;
-    padding: 0;
+    background: #fff;
+    font-family: 'Roboto', sans-serif;
+    color: #202124;
     display: flex;
     height: 100vh;
     justify-content: center;
     align-items: center;
   }}
   .card {{
-    background: white;
-    padding: 2rem 3rem;
+    background: #f8f9fa;
+    padding: 2rem 2.5rem;
     border-radius: 12px;
-    box-shadow: 0 6px 10px rgba(0,0,0,0.1), 0 1px 18px rgba(0,0,0,0.06);
-    max-width: 400px;
-    width: 90%;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);
+    max-width: 360px;
+    width: 90vw;
     text-align: center;
   }}
   h1 {{
     font-weight: 500;
-    font-size: 2.2rem;
-    color: #4caf50; /* Material green */
-    margin-bottom: 0.3rem;
-  }}
-  p {{
-    font-weight: 400;
-    font-size: 1.1rem;
-    margin: 0.5rem 0;
-    color: #616161;
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: #1a73e8;
   }}
   .mac {{
     font-weight: 500;
-    font-size: 1.3rem;
-    color: #212121;
-    margin-top: 1rem;
+    color: #3c4043;
     letter-spacing: 2px;
+    margin-bottom: 1.5rem;
   }}
-  .button {{
-    margin-top: 2rem;
-    background-color: #4caf50;
-    border: none;
-    color: white;
-    padding: 0.75rem 2rem;
-    font-size: 1rem;
-    border-radius: 24px;
-    cursor: pointer;
-    box-shadow: 0 3px 5px rgba(76,175,80,0.4);
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  #status {{
+    font-weight: 600;
+    font-size: 1.3rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     user-select: none;
-    text-transform: uppercase;
-    font-weight: 500;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    min-width: 190px;
+    justify-content: center;
   }}
-  .button:hover {{
-    background-color: #43a047;
-    box-shadow: 0 5px 10px rgba(67,160,71,0.6);
+  #status.online {{
+    background-color: #e6f4ea;
+    color: #188038;
   }}
-  @media (max-width: 600px) {{
-    .card {{
-      padding: 1.5rem 2rem;
-      max-width: 95%;
-    }}
-    h1 {{
-      font-size: 1.8rem;
-    }}
-    .button {{
-      width: 100%;
-      padding: 0.75rem 0;
-    }}
+  #status.offline {{
+    background-color: #fce8e6;
+    color: #d93025;
   }}
 </style>
+<script>
+const SVG_CHECK = `{SVG_CHECK}`;
+const SVG_CROSS = `{SVG_CROSS}`;
+
+async function checkPing() {{
+  try {{
+    const res = await fetch('/ping');
+    const data = await res.json();
+    const status = document.getElementById('status');
+    if(data.alive) {{
+      status.innerHTML = SVG_CHECK + ' Device is <strong>ONLINE</strong>';
+      status.classList.remove('offline');
+      status.classList.add('online');
+    }} else {{
+      status.innerHTML = SVG_CROSS + ' Device is <strong>OFFLINE</strong>';
+      status.classList.remove('online');
+      status.classList.add('offline');
+    }}
+  }} catch(e) {{
+    console.error('Ping error:', e);
+  }}
+}}
+setInterval(checkPing, 1000);
+checkPing();
+</script>
 </head>
 <body>
   <div class="card">
-    <h1>✔️ Magic Packet Sent!</h1>
-    <p>Your Wake-on-LAN packet has been successfully sent to:</p>
+    <h1>Magic Packet Sent</h1>
     <div class="mac">{TARGET_MAC}</div>
-    <button class="button" onclick="location.reload()">Send Again</button>
+    <div id="status" class="offline">Checking status...</div>
   </div>
 </body>
 </html>'''
-
                 self.wfile.write(html.encode('utf-8'))
             except Exception as e:
                 self.send_response(500)
-                self.send_header('Content-type', 'text/html; charset=utf-8')
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.end_headers()
-                error_html = f'''<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><title>Error</title></head>
-<body>
-<h1>❌ Failed to send Magic Packet</h1>
-<p>{str(e)}</p>
-</body>
-</html>'''
-                self.wfile.write(error_html.encode('utf-8'))
+                self.wfile.write(f'<h1>Error sending WOL packet</h1><p>{e}</p>'.encode('utf-8'))
+
+        elif self.path == '/ping':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            alive = False
+            try:
+                res = subprocess.run(
+                    ['ping', '-c', '1', '-W', '1', TARGET_IP],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                alive = (res.returncode == 0)
+            except Exception:
+                alive = False
+            self.wfile.write(json.dumps({'alive': alive}).encode('utf-8'))
+
         elif self.path == '/favicon.svg':
             self.send_response(200)
-            self.send_header('Content-type', 'image/svg+xml')
+            self.send_header('Content-Type', 'image/svg+xml')
             self.end_headers()
             self.wfile.write(FAVICON_SVG)
+
         else:
             self.send_response(404)
-            self.send_header('Content-type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.end_headers()
-            self.wfile.write(b'Invalid endpoint\n')
+            self.wfile.write(b'Not found\n')
 
-def run_server():
-    server_address = ('', PORT)
-    httpd = HTTPServer(server_address, RequestHandler)
-    print(f"Listening on port {PORT}... (GET /wol to trigger WOL)")
-    httpd.serve_forever()
+def run():
+    server = HTTPServer(('', PORT), RequestHandler)
+    print(f'Serving on port {PORT}...')
+    server.serve_forever()
 
 if __name__ == '__main__':
-    run_server()
+    run()

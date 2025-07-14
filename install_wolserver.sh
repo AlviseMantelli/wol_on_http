@@ -22,6 +22,13 @@ if [[ ! "$TARGET_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
     exit 1
 fi
 
+# Prompt for IP address
+read -rp "🌐 Enter the target IP address (e.g. 192.168.1.123): " TARGET_IP
+if ! [[ "$TARGET_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "❌ Invalid IP address format."
+    exit 1
+fi
+
 # Prompt for port
 read -rp "📡 Enter the port number to listen on (default: 8000): " PORT
 PORT=${PORT:-8000}
@@ -67,6 +74,7 @@ curl -fsSL "$RAW_PYTHON_URL" -o "$TARGET_SCRIPT" || {
 echo "🛠️  Customizing script with MAC and port..."
 sed -i "s/^TARGET_MAC = .*/TARGET_MAC = '$TARGET_MAC'/" "$TARGET_SCRIPT"
 sed -i "s/^PORT = .*/PORT = $PORT/" "$TARGET_SCRIPT"
+sed -i "s/^TARGET_IP = .*/TARGET_IP = '$TARGET_IP'/" "$TARGET_SCRIPT"
 
 chmod +x "$TARGET_SCRIPT"
 chown "$USER:$USER" "$TARGET_SCRIPT"
