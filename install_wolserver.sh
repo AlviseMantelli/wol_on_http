@@ -49,6 +49,14 @@ if ! command -v pip3 >/dev/null; then
     sudo apt-get update && sudo apt-get install -y python3-pip
 fi
 
+if ! python3 -m venv --help >/dev/null 2>&1; then
+    echo "❌ python3-venv is not installed. Installing..."
+    sudo apt-get install -y python3-venv || {
+        echo "❌ Failed to install python3-venv."
+        exit 1
+    }
+fi
+
 # Create virtualenv if not exists
 if [ ! -d "$VENV_DIR" ]; then
     echo "🐍 Creating Python virtual environment at $VENV_DIR..."
