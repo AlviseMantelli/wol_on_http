@@ -15,26 +15,57 @@ RAW_PYTHON_URL="https://raw.githubusercontent.com/AlviseMantelli/wol_on_http/mai
 
 echo "✅ Installing or updating $SERVICE_NAME for user: $USER"
 
-# Prompt for MAC address
-read -rp "📥 Enter the target MAC address for Wake-on-LAN (e.g. A0:B2:C3:D4:E5:F6): " TARGET_MAC
-if [[ ! "$TARGET_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
-    echo "❌ Invalid MAC address format."
-    exit 1
-fi
+# Check if the Python script already exists
+if [ -f "$TARGET_SCRIPT" ]; then
+    echo "⚠️  The script $TARGET_SCRIPT already exists."
+    read -rp "Do you want to keep the current MAC, IP, and PORT variables? (y/N): " KEEP_VARS
+    KEEP_VARS=${KEEP_VARS,,}  # convert to lowercase
 
-# Prompt for IP address
-read -rp "🌐 Enter the target IP address (e.g. 192.168.1.123): " TARGET_IP
-if ! [[ "$TARGET_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    echo "❌ Invalid IP address format."
-    exit 1
-fi
+    if [[ "$KEEP_VARS" == "y" || "$KEEP_VARS" == "yes" ]]; then
+        echo "ℹ️  Keeping existing variables, skipping variable update."
+    else
+        # Prompt for MAC address
+        read -rp "📥 Enter the target MAC address for Wake-on-LAN (e.g. A0:B2:C3:D4:E5:F6): " TARGET_MAC
+        if [[ ! "$TARGET_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
+            echo "❌ Invalid MAC address format."
+            exit 1
+        fi
 
-# Prompt for port
-read -rp "📡 Enter the port number to listen on (default: 8000): " PORT
-PORT=${PORT:-8000}
-if ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    echo "❌ Invalid port number."
-    exit 1
+        # Prompt for IP address
+        read -rp "🌐 Enter the target IP address (e.g. 192.168.1.123): " TARGET_IP
+        if ! [[ "$TARGET_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            echo "❌ Invalid IP address format."
+            exit 1
+        fi
+
+        # Prompt for port
+        read -rp "📡 Enter the port number to listen on (default: 8000): " PORT
+        PORT=${PORT:-8000}
+        if ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+            echo "❌ Invalid port number."
+            exit 1
+        fi
+    fi
+else
+    # If script doesn't exist, ask normally
+    read -rp "📥 Enter the target MAC address for Wake-on-LAN (e.g. A0:B2:C3:D4:E5:F6): " TARGET_MAC
+    if [[ ! "$TARGET_MAC" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
+        echo "❌ Invalid MAC address format."
+        exit 1
+    fi
+
+    read -rp "🌐 Enter the target IP address (e.g. 192.168.1.123): " TARGET_IP
+    if ! [[ "$TARGET_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "❌ Invalid IP address format."
+        exit 1
+    fi
+
+    read -rp "📡 Enter the port number to listen on (default: 8000): " PORT
+    PORT=${PORT:-8000}
+    if ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+        echo "❌ Invalid port number."
+        exit 1
+    fi
 fi
 
 # Ensure Python3 and pip are installed
@@ -71,18 +102,20 @@ echo "📦 Installing required Python package 'wakeonlan' in virtualenv..."
 # Ensure target directory exists
 mkdir -p "$TARGET_DIR"
 
-# Download the Python script
+# Download the Python script (always overwrite)
 echo "⬇️  Downloading Python script..."
 curl -fsSL "$RAW_PYTHON_URL" -o "$TARGET_SCRIPT" || {
     echo "❌ Failed to download Python script."
     exit 1
 }
 
-# Inject MAC address and port into the Python script
-echo "🛠️  Customizing script with MAC and port..."
-sed -i "s/^TARGET_MAC = .*/TARGET_MAC = '$TARGET_MAC'/" "$TARGET_SCRIPT"
-sed -i "s/^PORT = .*/PORT = $PORT/" "$TARGET_SCRIPT"
-sed -i "s/^TARGET_IP = .*/TARGET_IP = '$TARGET_IP'/" "$TARGET_SCRIPT"
+# Update variables in the script only if user didn't choose to keep old values
+if [[ "$KEEP_VARS" != "y" && "$KEEP_VARS" != "yes" ]]; then
+    echo "🛠️  Injecting MAC, IP and PORT into the Python script..."
+    sed -i "s/^TARGET_MAC = .*/TARGET_MAC = '$TARGET_MAC'/" "$TARGET_SCRIPT"
+    sed -i "s/^TARGET_IP = .*/TARGET_IP = '$TARGET_IP'/" "$TARGET_SCRIPT"
+    sed -i "s/^PORT = .*/PORT = $PORT/" "$TARGET_SCRIPT"
+fi
 
 chmod +x "$TARGET_SCRIPT"
 chown "$USER:$USER" "$TARGET_SCRIPT"
