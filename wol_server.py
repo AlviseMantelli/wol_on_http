@@ -7,9 +7,12 @@ from wakeonlan import send_magic_packet
 import sys
 
 # --- Configuration ---
+# These values are placeholders and will be overwritten by the installer.
 TARGET_MAC = '00:11:22:33:44:55'
 TARGET_IP = '192.168.1.100'
+BROADCAST_IP = '192.168.1.255'
 PORT = 8000
+FRIENDLY_NAME = 'My Device'
 
 # --- SVG Icons (used in JS and HTML) ---
 # Using simple placeholders as most icons will be embedded directly in the HTML/JS for dynamic control
@@ -43,7 +46,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _send_wol(self):
         try:
-            send_magic_packet(TARGET_MAC)
+            # Use the configured BROADCAST_IP
+            send_magic_packet(TARGET_MAC, ip_address=BROADCAST_IP)
             response = json.dumps({"status": "ok", "message": "Magic Packet sent successfully."})
             self._send_response(200, 'application/json', response)
         except Exception as e:
@@ -53,6 +57,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _check_ping(self):
         try:
             param = '-n' if sys.platform == 'win32' else '-c'
+            # Ping with a 1-second timeout
             command = ['ping', param, '1', '-W', '1', TARGET_IP]
             is_alive = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
         except Exception:
@@ -69,13 +74,15 @@ class RequestHandler(BaseHTTPRequestHandler):
     def render_main_page(self) -> str:
         # NOTE: All literal curly braces for CSS and JS have been doubled (e.g., {{, }})
         # to work correctly inside the Python f-string.
+        # The variables {FRIENDLY_NAME}, {TARGET_IP}, {TARGET_MAC}, and {BROADCAST_IP}
+        # are injected directly into the HTML/JS.
         return f'''
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WOL Controller</title>
+    <title>{FRIENDLY_NAME} - WOL Controller</title>
     <link id="favicon" rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -188,12 +195,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         }}
         .skeleton.skeleton-text {{ height: 1.2em; width: 80%; margin: 0.2em auto; }}
         .skeleton.skeleton-title {{ height: 1.5em; width: 60%; margin: 0.2em auto 1rem; }}
-        .skeleton.skeleton-info {{ height: 3em; margin-bottom: 1.5rem; }}
+        .skeleton.skeleton-info {{ height: 4.5em; margin-bottom: 1.5rem; }}
         .skeleton.skeleton-status {{ height: 3.2rem; border-radius: 50px; margin-bottom: 1.5rem; }}
         .skeleton.skeleton-button {{ height: 3.5rem; border-radius: 12px; }}
 
         h1 {{ font-weight: 600; font-size: 1.75rem; margin-bottom: 0.5rem; }}
-        .device-info {{ padding: 0.75rem 1rem; margin-bottom: 1.5rem; word-break: break-all; }}
+        .device-info {{ padding: 0.75rem 1rem; margin-bottom: 1.5rem; word-break: break-all; text-align: left; line-height: 1.6; }}
         .device-info strong {{ color: var(--text-color); }}
         .device-info span {{ color: var(--text-light); font-family: 'Menlo', 'Consolas', monospace; }}
 
@@ -248,6 +255,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         // --- State ---
         let isInitialLoad = true;
+        let pingInterval;
 
         // --- Icons ---
         const ICONS = {{
@@ -325,10 +333,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 showToast("Failed to send packet ❌");
             }}
             
+            // Re-enable button after a delay
             setTimeout(() => {{
                 wolButton.disabled = false;
                 wolButton.innerHTML = `${{ICONS.wakeUp}} <span>Wake Up Device</span>`;
             }}, 2000);
+            
+            // Trigger a status check sooner
+            setTimeout(checkStatus, 3000);
         }}
 
         // --- Theme Management ---
@@ -351,8 +363,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
 
             // Populate static content
-            cardTitle.textContent = "Device Controller";
-            deviceInfo.innerHTML = `<strong>IP:</strong> <span>{TARGET_IP}</span><br><strong>MAC:</strong> <span>{TARGET_MAC}</span>`;
+            // These values are injected by the Python f-string
+            cardTitle.textContent = "{FRIENDLY_NAME}";
+            deviceInfo.innerHTML = `<strong>IP:</strong> <span>{TARGET_IP}</span><br><strong>MAC:</strong> <span>{TARGET_MAC}</span><br><strong>Broadcast:</strong> <span>{BROADCAST_IP}</span>`;
             wolButton.innerHTML = `${{ICONS.wakeUp}} <span>Wake Up Device</span>`;
             
             // Add listeners
@@ -360,8 +373,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             
             // Start status polling
             setFavicon('checking');
-            checkStatus();
-            setInterval(checkStatus, 1000);
+            checkStatus(); // Initial check
+            pingInterval = setInterval(checkStatus, 5000); // Poll every 5 seconds
         }});
 
     </script>
@@ -375,7 +388,7 @@ def run():
     try:
         server_address = ('', PORT)
         httpd = HTTPServer(server_address, RequestHandler)
-        print(f"✅ Server running on http://localhost:{PORT}")
+        print(f"✅ Server for '{FRIENDLY_NAME}' running on http://localhost:{PORT}")
         print("Press Ctrl+C to stop.")
         httpd.serve_forever()
     except OSError as e:
