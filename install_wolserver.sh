@@ -7,7 +7,7 @@ USER=${SUDO_USER:-$(whoami)}
 BASE_DIR="/home/$USER"
 # GitHub raw URL for the *new* Python script
 # !!! UPDATE THIS URL to point to your hosted version of the Python script above !!!
-RAW_PYTHON_URL="https://gist.githubusercontent.com/AlviseMantelli/YOUR_GIST_ID/raw/wol_server_v2.py"
+RAW_PYTHON_URL="https://gist.githubusercontent.com/AlviseMantelli/YOUR_GIST_ID/raw/wol_server.py"
 
 
 # --- Main Installation Logic ---
