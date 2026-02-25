@@ -186,10 +186,11 @@ echo "📦 Installing or updating required Python package 'wakeonlan' in $VENV_D
 "$PIP_BIN" install --upgrade pip || { echo "❌ Failed to upgrade pip."; exit 1; }
 "$PIP_BIN" install wakeonlan || { echo "❌ Failed to install wakeonlan."; exit 1; }
 
-# Install gpiozero if a PIN is defined
+# Install rpi-lgpio (Bookworm compatibility layer) if a PIN is defined
 if [ -n "$HW_PIN" ]; then
-    echo "📦 Installing gpiozero for hardware pin control..."
-    "$PIP_BIN" install gpiozero || echo "⚠️ Failed to install gpiozero."
+    echo "📦 Installing rpi-lgpio for hardware pin control on Bookworm..."
+    "$PIP_BIN" uninstall -y gpiozero RPi.GPIO >/dev/null 2>&1 || true
+    "$PIP_BIN" install rpi-lgpio || echo "⚠️ Failed to install rpi-lgpio."
     echo "🔐 Adding user $USER to the 'gpio' group..."
     sudo usermod -a -G gpio "$USER" || echo "⚠️ Warning: Failed to add user to 'gpio' group."
 fi
