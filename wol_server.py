@@ -469,9 +469,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 hwButton.addEventListener('mouseleave', releasePin); // Safety trigger if mouse leaves button
 
                 // Touch events for mobile
-                hwButton.addEventListener('touchstart', (e) => { e.preventDefault(); pressPin(); });
-                hwButton.addEventListener('touchend', (e) => { e.preventDefault(); releasePin(); });
-                hwButton.addEventListener('touchcancel', (e) => { e.preventDefault(); releasePin(); });
+                hwButton.addEventListener('touchstart', (e) => {{ e.preventDefault(); pressPin(); }});
+                hwButton.addEventListener('touchend', (e) => {{ e.preventDefault(); releasePin(); }});
+                hwButton.addEventListener('touchcancel', (e) => {{ e.preventDefault(); releasePin(); }});
             }}
 
         }});
