@@ -8,9 +8,11 @@ from wakeonlan import send_magic_packet
 import sys
 
 try:
-    import RPi.GPIO as GPIO
+    from gpiozero import DigitalOutputDevice
+    hardware_pin = None
 except ImportError:
-    GPIO = None
+    DigitalOutputDevice = None
+    hardware_pin = None
 
 # --- Configuration ---
 # These values are placeholders and will be overwritten by the installer.
@@ -24,13 +26,13 @@ HW_PIN = '' # Installer will overwrite this
 safety_timer = None
 
 def reset_pin_high():
-    """Safety function to reset the pin to INPUT (high impedance) after 30 seconds."""
+    """Safety function to release the pin (high impedance) after 30 seconds."""
     global safety_timer
-    if GPIO and HW_PIN:
+    if hardware_pin:
         try:
-            # Set to INPUT to simulate a released button (open circuit)
-            GPIO.setup(int(HW_PIN), GPIO.IN)
-            print(f"Safety timeout: Pin {HW_PIN} automatically reset to INPUT (released).")
+            # Turn off switches the pin back to input (High-Z)
+            hardware_pin.off()
+            print(f"Safety timeout: Pin {HW_PIN} automatically released.")
         except Exception as e:
             print(f"Error resetting pin: {e}")
     safety_timer = None
@@ -60,15 +62,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_response(404, 'text/plain', 'Not Found')
 
     def _handle_pin_low(self):
-        """Simulate button press by setting pin to OUTPUT and LOW."""
+        """Simulate button press by pulling pin LOW."""
         global safety_timer
-        if not GPIO or not HW_PIN:
-            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
+        if not hardware_pin:
+            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured or library missing"}')
             return
         
         try:
-            # Set to OUTPUT and pull to Ground safely
-            GPIO.setup(int(HW_PIN), GPIO.OUT, initial=GPIO.LOW)
+            # .on() drives the pin LOW because active_high=False
+            hardware_pin.on()
             
             # Cancel existing timer if any
             if safety_timer:
@@ -83,13 +85,13 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _handle_pin_high(self):
         """Simulate button release by setting pin to INPUT (high impedance)."""
         global safety_timer
-        if not GPIO or not HW_PIN:
-            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
+        if not hardware_pin:
+            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured or library missing"}')
             return
             
         try:
-            # Set back to INPUT to release the line
-            GPIO.setup(int(HW_PIN), GPIO.IN)
+            # .off() switches the pin back to input (High-Z)
+            hardware_pin.off()
             
             # Cancel timer since the user released the button
             if safety_timer:
@@ -489,16 +491,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 def run():
     """Starts the HTTP server and initializes GPIO."""
+    global hardware_pin
     
-    # Initialize GPIO if configured
-    if HW_PIN and GPIO:
+    # Initialize GPIO if configured using gpiozero
+    if HW_PIN and DigitalOutputDevice:
         try:
-            GPIO.setmode(GPIO.BCM)
-            # Default state is INPUT (button released)
-            GPIO.setup(int(HW_PIN), GPIO.IN)
-            print(f"📌 GPIO Pin {HW_PIN} initialized as INPUT (High-Z).")
+            # active_high=False and initial_value=False means:
+            # Default state is OFF (High-Z input). When turned ON, it pulls LOW.
+            hardware_pin = DigitalOutputDevice(int(HW_PIN), active_high=False, initial_value=False)
+            print(f"📌 GPIO Pin {HW_PIN} initialized as open-drain (released).")
         except Exception as e:
-            print(f"❌ Failed to setup GPIO pin {HW_PIN}. Is this a Raspberry Pi? Error: {e}")
+            print(f"❌ Failed to setup GPIO pin {HW_PIN}. Error: {e}")
+            hardware_pin = None
             
     try:
         server_address = ('', PORT)
@@ -513,9 +517,8 @@ def run():
         print("\nStopping server...")
         httpd.server_close()
     finally:
-        # Ensure GPIO is cleaned up when the script exits
-        if HW_PIN and GPIO:
-            GPIO.cleanup()
+        if hardware_pin:
+            hardware_pin.close()
             print("🧹 GPIO cleaned up.")
 
 
