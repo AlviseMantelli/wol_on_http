@@ -24,12 +24,13 @@ HW_PIN = '' # Installer will overwrite this
 safety_timer = None
 
 def reset_pin_high():
-    """Safety function to reset the pin to HIGH after 30 seconds."""
+    """Safety function to reset the pin to INPUT (high impedance) after 30 seconds."""
     global safety_timer
     if GPIO and HW_PIN:
         try:
-            GPIO.output(int(HW_PIN), GPIO.HIGH)
-            print(f"Safety timeout: Pin {HW_PIN} automatically reset to HIGH.")
+            # Set to INPUT to simulate a released button (open circuit)
+            GPIO.setup(int(HW_PIN), GPIO.IN)
+            print(f"Safety timeout: Pin {HW_PIN} automatically reset to INPUT (released).")
         except Exception as e:
             print(f"Error resetting pin: {e}")
     safety_timer = None
@@ -59,14 +60,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_response(404, 'text/plain', 'Not Found')
 
     def _handle_pin_low(self):
-        """Set GPIO pin to LOW and start a 30s safety timer."""
+        """Simulate button press by setting pin to OUTPUT and LOW."""
         global safety_timer
         if not GPIO or not HW_PIN:
             self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
             return
         
         try:
+            # Set to OUTPUT and pull to Ground
+            GPIO.setup(int(HW_PIN), GPIO.OUT)
             GPIO.output(int(HW_PIN), GPIO.LOW)
+            
             # Cancel existing timer if any
             if safety_timer:
                 safety_timer.cancel()
@@ -78,14 +82,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_response(500, 'application/json', f'{{"status": "error", "message": "{str(e)}"}}')
 
     def _handle_pin_high(self):
-        """Set GPIO pin back to HIGH and clear the timer."""
+        """Simulate button release by setting pin to INPUT (high impedance)."""
         global safety_timer
         if not GPIO or not HW_PIN:
             self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
             return
             
         try:
-            GPIO.output(int(HW_PIN), GPIO.HIGH)
+            # Set back to INPUT to release the line
+            GPIO.setup(int(HW_PIN), GPIO.IN)
+            
             # Cancel timer since the user released the button
             if safety_timer:
                 safety_timer.cancel()
@@ -489,9 +495,9 @@ def run():
     if HW_PIN and GPIO:
         try:
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(int(HW_PIN), GPIO.OUT)
-            GPIO.output(int(HW_PIN), GPIO.HIGH) # Default state is HIGH
-            print(f"📌 GPIO Pin {HW_PIN} initialized to HIGH.")
+            # Default state is INPUT (button released)
+            GPIO.setup(int(HW_PIN), GPIO.IN)
+            print(f"📌 GPIO Pin {HW_PIN} initialized as INPUT (High-Z).")
         except Exception as e:
             print(f"❌ Failed to setup GPIO pin {HW_PIN}. Is this a Raspberry Pi? Error: {e}")
             

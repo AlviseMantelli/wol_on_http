@@ -77,6 +77,7 @@ if [ -f "$TARGET_SCRIPT" ]; then
             echo "   - IP: $TARGET_IP"
             echo "   - Broadcast: $BROADCAST_IP"
             echo "   - PORT: $PORT"
+            echo "   - HW PIN: ${HW_PIN:-None configured}"
         else
             echo "❌ Could not fully load all existing variables. Please provide them manually."
             KEEP_VARS="no" # Fallback to manual input if load fails
