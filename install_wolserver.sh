@@ -185,10 +185,10 @@ fi
 echo "📦 Installing or updating required Python package 'wakeonlan' in $VENV_DIR..."
 "$PIP_BIN" install --upgrade pip || { echo "❌ Failed to upgrade pip."; exit 1; }
 "$PIP_BIN" install wakeonlan || { echo "❌ Failed to install wakeonlan."; exit 1; }
-# Install RPi.GPIO if a PIN is defined
+# Add the current user to the 'gpio' group for hardware access without sudo
 if [ -n "$HW_PIN" ]; then
-    echo "📦 Installing RPi.GPIO for hardware pin control..."
-    "$PIP_BIN" install RPi.GPIO || echo "⚠️ Failed to install RPi.GPIO. Are you on a Raspberry Pi?"
+    echo "🔐 Adding user $USER to the 'gpio' group..."
+    sudo usermod -a -G gpio "$USER" || echo "⚠️ Warning: Failed to add user to 'gpio' group."
 fi
 
 # --- Script Download and Configuration ---

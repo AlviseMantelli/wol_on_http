@@ -67,9 +67,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         
         try:
-            # Set to OUTPUT and pull to Ground
-            GPIO.setup(int(HW_PIN), GPIO.OUT)
-            GPIO.output(int(HW_PIN), GPIO.LOW)
+            # Set to OUTPUT and pull to Ground safely
+            GPIO.setup(int(HW_PIN), GPIO.OUT, initial=GPIO.LOW)
             
             # Cancel existing timer if any
             if safety_timer:
