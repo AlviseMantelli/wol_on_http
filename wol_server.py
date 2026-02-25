@@ -2,9 +2,15 @@
 
 import subprocess
 import json
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from wakeonlan import send_magic_packet
 import sys
+
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    GPIO = None
 
 # --- Configuration ---
 # These values are placeholders and will be overwritten by the installer.
@@ -13,6 +19,20 @@ TARGET_IP = '192.168.1.100'
 BROADCAST_IP = '192.168.1.255'
 PORT = 8000
 FRIENDLY_NAME = 'My Device'
+HW_PIN = '' # Installer will overwrite this
+
+safety_timer = None
+
+def reset_pin_high():
+    """Safety function to reset the pin to HIGH after 30 seconds."""
+    global safety_timer
+    if GPIO and HW_PIN:
+        try:
+            GPIO.output(int(HW_PIN), GPIO.HIGH)
+            print(f"Safety timeout: Pin {HW_PIN} automatically reset to HIGH.")
+        except Exception as e:
+            print(f"Error resetting pin: {e}")
+    safety_timer = None
 
 # --- SVG Icons (used in JS and HTML) ---
 # Using simple placeholders as most icons will be embedded directly in the HTML/JS for dynamic control
@@ -31,8 +51,48 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._check_ping()
         elif self.path == '/favicon.svg':
             self._serve_favicon()
+        elif self.path == '/pin/low':
+            self._handle_pin_low()
+        elif self.path == '/pin/high':
+            self._handle_pin_high()
         else:
             self._send_response(404, 'text/plain', 'Not Found')
+
+    def _handle_pin_low(self):
+        """Set GPIO pin to LOW and start a 30s safety timer."""
+        global safety_timer
+        if not GPIO or not HW_PIN:
+            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
+            return
+        
+        try:
+            GPIO.output(int(HW_PIN), GPIO.LOW)
+            # Cancel existing timer if any
+            if safety_timer:
+                safety_timer.cancel()
+            # Start a new 30s safety timer
+            safety_timer = threading.Timer(30.0, reset_pin_high)
+            safety_timer.start()
+            self._send_response(200, 'application/json', '{"status": "ok"}')
+        except Exception as e:
+            self._send_response(500, 'application/json', f'{{"status": "error", "message": "{str(e)}"}}')
+
+    def _handle_pin_high(self):
+        """Set GPIO pin back to HIGH and clear the timer."""
+        global safety_timer
+        if not GPIO or not HW_PIN:
+            self._send_response(400, 'application/json', '{"status": "error", "message": "GPIO not configured"}')
+            return
+            
+        try:
+            GPIO.output(int(HW_PIN), GPIO.HIGH)
+            # Cancel timer since the user released the button
+            if safety_timer:
+                safety_timer.cancel()
+                safety_timer = None
+            self._send_response(200, 'application/json', '{"status": "ok"}')
+        except Exception as e:
+            self._send_response(500, 'application/json', f'{{"status": "error", "message": "{str(e)}"}}')
 
     def _send_response(self, code, content_type, body):
         self.send_response(code)
@@ -213,6 +273,20 @@ class RequestHandler(BaseHTTPRequestHandler):
         #wol-button:hover:not(:disabled) {{ background-color: var(--accent-hover); }}
         #wol-button:disabled {{ cursor: not-allowed; background-color: var(--text-light); opacity: 0.7; }}
 
+        #hw-button {{
+            width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.75rem; 
+            padding: 1rem; font-size: 1rem; font-weight: 600; font-family: var(--font-family); 
+            color: #fff; background-color: #e67e22; border: none; border-radius: 12px; 
+            cursor: pointer; transition: all 0.1s ease; margin-top: 1rem;
+            box-shadow: 0 6px 0 #d35400, 0 8px 10px rgba(0,0,0,0.2); /* 3D effect for physical push */
+        }}
+
+        #hw-button:hover:not(:disabled) {{ background-color: #d35400; }}
+        #hw-button:active {{
+            transform: translateY(6px);
+            box-shadow: 0 0px 0 #d35400, 0 2px 4px rgba(0,0,0,0.2);
+        }}
+        
         #toast {{ visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 12px; padding: 16px; position: fixed; z-index: 1; left: 50%; transform: translateX(-50%); bottom: 30px; font-size: 1rem; }}
         #toast.show {{ visibility: visible; animation: toast-fadein 0.5s, toast-fadeout 0.5s 2.5s; }}
         @keyframes toast-fadein {{ from {{ bottom: 0; opacity: 0; }} to {{ bottom: 30px; opacity: 1; }} }}
@@ -233,6 +307,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         <div id="wol-button-container" class="skeleton skeleton-button">
             <button id="wol-button" style="display: none;"></button>
         </div>
+        <button id="hw-button" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            <span>HW Power Button</span>
+        </button>
     </div>
     
     <div id="toast"></div>
@@ -250,6 +328,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         const statusIndicator = document.getElementById('status-indicator');
         const wolButtonContainer = document.getElementById('wol-button-container');
         const wolButton = document.getElementById('wol-button');
+        const hwButton = document.getElementById('hw-button');
         const themeSwitcher = document.getElementById('theme-switcher');
         const favicon = document.getElementById('favicon');
 
@@ -375,6 +454,26 @@ class RequestHandler(BaseHTTPRequestHandler):
             setFavicon('checking');
             checkStatus(); // Initial check
             pingInterval = setInterval(checkStatus, 5000); // Poll every 5 seconds
+
+            const hwPin = "{HW_PIN}";
+            
+            if (hwPin !== "") {{
+                hwButton.style.display = 'flex';
+                
+                const pressPin = () => fetch('/pin/low').catch(err => console.error("Error setting pin LOW:", err));
+                const releasePin = () => fetch('/pin/high').catch(err => console.error("Error setting pin HIGH:", err));
+
+                // Mouse events for desktop
+                hwButton.addEventListener('mousedown', pressPin);
+                hwButton.addEventListener('mouseup', releasePin);
+                hwButton.addEventListener('mouseleave', releasePin); // Safety trigger if mouse leaves button
+
+                // Touch events for mobile
+                hwButton.addEventListener('touchstart', (e) => { e.preventDefault(); pressPin(); });
+                hwButton.addEventListener('touchend', (e) => { e.preventDefault(); releasePin(); });
+                hwButton.addEventListener('touchcancel', (e) => { e.preventDefault(); releasePin(); });
+            }}
+
         }});
 
     </script>
@@ -384,7 +483,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 
 def run():
-    """Starts the HTTP server."""
+    """Starts the HTTP server and initializes GPIO."""
+    
+    # Initialize GPIO if configured
+    if HW_PIN and GPIO:
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(int(HW_PIN), GPIO.OUT)
+            GPIO.output(int(HW_PIN), GPIO.HIGH) # Default state is HIGH
+            print(f"📌 GPIO Pin {HW_PIN} initialized to HIGH.")
+        except Exception as e:
+            print(f"❌ Failed to setup GPIO pin {HW_PIN}. Is this a Raspberry Pi? Error: {e}")
+            
     try:
         server_address = ('', PORT)
         httpd = HTTPServer(server_address, RequestHandler)
@@ -397,6 +507,11 @@ def run():
     except KeyboardInterrupt:
         print("\nStopping server...")
         httpd.server_close()
+    finally:
+        # Ensure GPIO is cleaned up when the script exits
+        if HW_PIN and GPIO:
+            GPIO.cleanup()
+            print("🧹 GPIO cleaned up.")
 
 
 if __name__ == '__main__':

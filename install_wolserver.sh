@@ -43,6 +43,7 @@ TARGET_MAC=""
 TARGET_IP=""
 BROADCAST_IP=""
 PORT=""
+HW_PIN=""
 KEEP_VARS="no" # Default to 'no' for keeping variables
 
 # --- Variable Retention Logic ---
@@ -61,12 +62,14 @@ if [ -f "$TARGET_SCRIPT" ]; then
         OLD_IP_READ=$(grep "TARGET_IP =" "$TARGET_SCRIPT" | awk -F"'" '{print $2}' | head -1)
         OLD_BROADCAST_READ=$(grep "BROADCAST_IP =" "$TARGET_SCRIPT" | awk -F"'" '{print $2}' | head -1)
         OLD_PORT_READ=$(grep "PORT =" "$TARGET_SCRIPT" | awk -F"=" '{print $2}' | tr -d ' ' | head -1)
+        OLD_PIN_READ=$(grep "HW_PIN =" "$TARGET_SCRIPT" | awk -F"'" '{print $2}' | head -1)
 
         # Assign read values if they are not empty
         TARGET_MAC=${OLD_MAC_READ:-$TARGET_MAC}
         TARGET_IP=${OLD_IP_READ:-$TARGET_IP}
         BROADCAST_IP=${OLD_BROADCAST_READ:-$BROADCAST_IP}
         PORT=${OLD_PORT_READ:-$PORT}
+        HW_PIN=${OLD_PIN_READ:-$HW_PIN}
 
         if [ -n "$TARGET_MAC" ] && [ -n "$TARGET_IP" ] && [ -n "$PORT" ] && [ -n "$BROADCAST_IP" ]; then
             echo "✅ Successfully loaded existing variables:"
@@ -125,6 +128,21 @@ if [[ "$KEEP_VARS" != "yes" ]]; then
             echo "❌ Invalid port number. Must be between 1 and 65535. Please try again."
         fi
     done
+
+    # Prompt for hardware PIN
+    read -rp "🔌 Do you want to define a hardware PIN for booting (feature available only on Raspberry PI or similar)? (y/N): " USE_PIN
+    if [[ "${USE_PIN,,}" == "y" || "${USE_PIN,,}" == "yes" ]]; then
+        while true; do
+            read -rp "📌 Enter the BCM PIN number (e.g., 14): " HW_PIN
+            if [[ "$HW_PIN" =~ ^[0-9]+$ ]]; then
+                break
+            else
+                echo "❌ Invalid PIN format. Must be a number."
+            fi
+        done
+    else
+        HW_PIN=""
+    fi
 fi
 
 # --- System Prerequisites Check ---
@@ -166,6 +184,11 @@ fi
 echo "📦 Installing or updating required Python package 'wakeonlan' in $VENV_DIR..."
 "$PIP_BIN" install --upgrade pip || { echo "❌ Failed to upgrade pip."; exit 1; }
 "$PIP_BIN" install wakeonlan || { echo "❌ Failed to install wakeonlan."; exit 1; }
+# Install RPi.GPIO if a PIN is defined
+if [ -n "$HW_PIN" ]; then
+    echo "📦 Installing RPi.GPIO for hardware pin control..."
+    "$PIP_BIN" install RPi.GPIO || echo "⚠️ Failed to install RPi.GPIO. Are you on a Raspberry Pi?"
+fi
 
 # --- Script Download and Configuration ---
 # Ensure base directory exists
@@ -191,6 +214,7 @@ sed -i "s|^FRIENDLY_NAME = .*|FRIENDLY_NAME = '$FRIENDLY_NAME'|" "$TARGET_SCRIPT
 
 # PORT is an integer in Python, so no quotes
 sed -i "s/^PORT = .*/PORT = $PORT/" "$TARGET_SCRIPT" || { echo "❌ Failed to update PORT."; exit 1; }
+sed -i "s/^HW_PIN = .*/HW_PIN = '$HW_PIN'/" "$TARGET_SCRIPT" || { echo "❌ Failed to update HW_PIN."; exit 1; }
 
 # Set appropriate permissions and ownership for the Python script
 chmod +x "$TARGET_SCRIPT" || { echo "❌ Failed to set script executable permissions."; exit 1; }
